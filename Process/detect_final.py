@@ -1,8 +1,6 @@
 """
-고민정 :
-cd ./model/yolov5/detect.py 파일에 붙여넣기 할 것
+model/yolov5/detect.py와 동일한 코드
 """
-
 # YOLOv5 🚀 by Ultralytics, AGPL-3.0 license
 """
 Run YOLOv5 detection inference on images, videos, directories, globs, YouTube, webcam, streams, etc.
@@ -57,6 +55,11 @@ from utils.general import (LOGGER, Profile, check_file, check_img_size, check_im
 from utils.torch_utils import select_device, smart_inference_mode
 
 
+#### 고민정 : 영상 시각화
+import cv2
+from PIL import Image
+from model.roboflow import detect_roboflow
+
 @smart_inference_mode()
 def run(
         weights=ROOT / 'yolov5s.pt',  # model path or triton URL
@@ -86,7 +89,7 @@ def run(
         half=False,  # use FP16 half-precision inference
         dnn=False,  # use OpenCV DNN for ONNX inference
         vid_stride=1,  # video frame-rate stride
-        #### 고민정 : 객체검출 시각화 결과 저장
+        #### 고민정 : 객체 검출 시각화 결과 저장
         save_img=True,  # save inference images (default: True)
         save_dir=ROOT / 'runs/detect',  # save directory (default: 'runs/detect')
 
@@ -133,15 +136,31 @@ def run(
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
     for path, im, im0s, vid_cap, s in dataset:  # 프레임당
 
-        #### 고민정 : 출력
+        #### 고민정 : 출력 및 반환
         LOGGER.info('프레임 인덱스 : ' + s)
+        result_detection = {}
+
         #### 고민정 프레임 인덱스 및 총 프레임 출력
         frame_idx = int(s[(s.find('(') + 1):(s.find('/', (s.find('(') + 1)))])
         frame_total = int(s[(s.find('/', s.find('/') + 1) + 1):s.find(')')])
+
+
+        # 프레임을 이미지 파일로 저장
+        ret, frame = vid_cap.read()
+        frame_filepath = 'detected/frame/'
+        frame_filename = f"frame_{frame_idx:04d}.jpg"
+        roboflow_path = frame_filepath + frame_filename
+        cv2.imwrite(roboflow_path, frame)
+        prediction = detect_roboflow.inference(frame_filename, frame_filepath)
+        result_detection['machine'] = prediction.json()
+
+
         #### 고민정 : 반환
-        result_detection = {}
         result_detection['frame_idx'] = frame_idx
         result_detection['frame_total'] = frame_total
+
+
+
 
         with dt[0]:
             im = torch.from_numpy(im).to(model.device)
@@ -161,26 +180,7 @@ def run(
 
         # Second-stage classifier (optional)
         # pred = utils.general.apply_classifier(pred, classifier_model, im, im0s)
-        """
-        result_detection = {
-            'frame_idx' : frame_idx,
-            'frame_total' : frame_total,
-            'inference_ms' : '4ms',
-            'object': [
-            ]
-            'detection' :[
-                {
-                    'class_name': person,
-                    'class_id': 36,
-                    'coordinates': [
-                        'x1', 'y1', 'x2', 'y2'
-                    ],
-                    'confidence': 0.93
-                },
-            ]
 
-        }
-        """
         #### 고민정 : 인퍼런스 시간(밀리초)
         LOGGER.info(f"Inference 단계에서의 소요 시간 : {dt[1].dt * 1E3:.1F}ms")
         """
@@ -215,7 +215,7 @@ def run(
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0.shape).round()
                 #### 고민정 :반환
-                result_detection['object'] = [{} for _ in range(80)]
+                result_detection['detection_object'] = [{} for _ in range(80)]
                 result_detection['detection_num'] = 0
 
                 # Print results
@@ -229,7 +229,7 @@ def run(
                     #### 고민정 : 반환
                     cl_info = {}
                     cl_info[names[int(c)]] = n
-                    result_detection['object'][int(c)][names[int(c)]] = n.item()  #### tensor(1.35).item() = 1.35
+                    result_detection['detection_object'][int(c)][names[int(c)]] = n.item()  #### tensor(1.35).item() = 1.35
                     result_detection['detection_num'] += 1
 
                     #### 고민정 : 출력
@@ -297,6 +297,7 @@ def run(
         # Print time (inference-only)
         LOGGER.info(f"{s}{'' if len(det) else '(no detections), '}")
 
+
         #### 고민정 : 반환
         result.append(result_detection)
 
@@ -351,8 +352,10 @@ def main(opt):
     check_requirements(ROOT / 'requirements.txt', exclude=('tensorboard', 'thop'))
     detections = run(**vars(opt))
 
+
     print("########################################################################################")
     print(detections)
+    return detections
 
     """
     for detection in detections:
@@ -371,9 +374,79 @@ def main(opt):
         print(f"Detected {class_name} ({class_id}) with confidence {confidence:.2f} : [{x1:.2f}, {y1:.2f}, {x2:.2f}, {y2:.2f}]")
     """
 
-
+"""
 if __name__ == '__main__':
     opt = parse_opt()
     #### 고민정 : 프레임 수 조절
-    opt.vid_stride = 2  # 예시: 2프레임마다 1프레임만 사용
+    opt.vid_stride = 16  # 예시: 16프레임마다 1프레임만 사용
+
+    #### 고민정 : 입력 영상 경로
+    opt.source = 'D:\Portfolio\Project\LaiON\YOLO\Process\materials\FitnessCenterShort.mp4'
+    #### 고민정 : 출력 영상 저장 경로
+    opt.project=ROOT / '../../detected' # ROOT = '프로젝트폴더/model/yolov5'
+    opt.name = 'person'
+
     main(opt)
+"""
+
+
+"""
+########################################################################################### 반환값 예시 :
+
+	{
+		'frame_idx': 1, 
+		'frame_total': 411, 
+		'object': [
+				{'person': 1}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 				{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, 				{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {'chair': 6}, {}, {}, 				{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {'refrigerator': 1}, {}, {}, {}, 				{}, {}, {}, {}
+		], 
+		'detection_num': 3, 
+		'detection': [
+			{
+				'class_id': 56, 
+				'class_name': 'chair', 
+				'coordinates': [351.0, 268.0, 547.0, 571.0], 
+				'confidence': 0.29409998655319214
+			}, 
+			{
+				'class_id': 56, 
+				'class_name': 'chair', 
+				'coordinates': [1045.0, 184.0, 1143.0, 334.0], 
+				'confidence': 0.31974121928215027}, 
+			{
+				'class_id': 56, 
+				'class_name': 'chair', 
+				'coordinates': [844.0, 115.0, 958.0, 339.0], 
+				'confidence': 0.47231048345565796}, 
+			{
+				'class_id': 56, 
+				'class_name': 'chair', 
+				'coordinates': [944.0, 178.0, 1059.0, 305.0], 
+				'confidence': 0.5053549408912659
+			}, 
+			{
+				'class_id': 56, 
+				'class_name': 'chair', 
+				'coordinates': [1115.0, 116.0, 1168.0, 155.0], 
+				'confidence': 0.5087709426879883
+			}, 
+			{
+				'class_id': 56, 
+				'class_name': 'chair', 
+				'coordinates': [1098.0, 154.0, 1167.0, 221.0], 
+				'confidence': 0.5664835572242737}, 
+			{
+				'class_id': 72, 
+				'class_name': 'refrigerator', 
+				'coordinates': [1.0, 30.0, 209.0, 644.0], 
+				'confidence': 0.6504184603691101
+			}, 
+			{
+				'class_id': 0, 
+				'class_name': 'person', 
+				'coordinates': [370.0, 85.0, 723.0, 549.0], 
+				'confidence': 0.8136065602302551
+			}
+		]
+	}, 
+
+"""
